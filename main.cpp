@@ -501,10 +501,12 @@ void loadAccounts() {
     fclose(fp);
 }
 
-void saveAccounts() {
-    FILE* fp = fopen("accounts.txt", "w");
-    if (!fp) return;
-    
+void saveAccountsToFile(const char* filename) {
+    FILE* fp = fopen(filename, "w");
+    if (!fp) {
+        printf("无法打开文件 %s\n", filename);
+        return;
+    }
     for (int i = 0; i < accountCount; i++) {
         fprintf(fp, "%s|%s|%s|%s|%s\n", 
                 accounts[i].username, 
@@ -514,6 +516,54 @@ void saveAccounts() {
                 accounts[i].email); 
     }
     fclose(fp);
+}
+
+void saveStudentsToFile() {
+    if (access("students.txt", F_OK) == 0) {
+        if (rename("students.txt", "students.bak") != 0) {
+            perror("无法创建备份文件");
+            return;
+        }
+    }
+    FILE* fp = NULL;
+    int retry = 0;
+    const int max_retry = 3;
+    
+    while(retry < max_retry) {
+        if((fp = fopen("students.txt", "w"))) break;
+        printf("文件保存失败(%d/3)，重试中...\n", ++retry);
+        sleep(1);
+    }
+    
+    if(!fp) {
+        perror("无法保存学生数据");
+        return;
+    }
+
+    Student* cur = head;
+    while(cur) {
+        // 数据完整性检查
+        if(validateUsername(cur->username) && 
+           validateClassName(cur->className) &&
+           cur->score >= MIN_SCORE && 
+           cur->score <= MAX_SCORE) 
+        {
+            fprintf(fp, "%s|%s|%s|%d\n",
+                   cur->username,
+                   cur->name,
+                   cur->className,
+                   cur->score);
+        }
+        cur = cur->next;
+    }
+    
+    if(fflush(fp) != 0 || fclose(fp) != 0) {
+        perror("数据可能保存失败");
+    }
+}
+
+void saveAccounts() {
+    saveAccountsToFile("accounts.txt");
 }
 
 void registerAccount() {
@@ -696,6 +746,20 @@ void sortStudentsByClass(const char* className, int ascending) {
 Account* login() {
     char username[MAX_STR_LEN], password[MAX_STR_LEN];
     safeInput(username, MAX_STR_LEN, "用户名: ");
+
+    // 检查用户名是否存在
+    int userExists = 0;
+    for (int i = 0; i < accountCount; i++) {
+        if (strcmp(accounts[i].username, username) == 0) {
+            userExists = 1;
+            break;
+        }
+    }
+    if (!userExists) {
+        printf("用户名不存在！\n");
+        return NULL;
+    }
+
     safeInputPassword(password, MAX_STR_LEN, "密码: ");
     
     for (int i = 0; i < accountCount; i++) {
@@ -705,7 +769,7 @@ Account* login() {
             return &accounts[i];
         }
     }
-    printf("登录失败！\n");
+    printf("密码错误！\n");
     return NULL;
 }
 
@@ -718,7 +782,7 @@ Student* findStudentByUsername(const char* username) {
     return NULL;
 }
 
-void saveStudentsToFile() {
+void saveStudentsToFile(const char* filename) {
     if (access("students.txt", F_OK) == 0) {
         if (rename("students.txt", "students.bak") != 0) {
             perror("无法创建备份文件");
@@ -763,18 +827,20 @@ void saveStudentsToFile() {
 }
 
 void addStudent(Account* currentAccount) {
-    Student s;
-    if (strcmp(currentAccount->role, "teacher") == 0) {
-    strcpy(s.className, currentAccount->className);
+    if (!currentAccount) {
+        printf("❌ 系统错误：无效用户上下文\n");
+        return;
     }
+    
+    int isAdmin = (strcmp(currentAccount->role, "admin") == 0);
+    int isTeacher = (strcmp(currentAccount->role, "teacher") == 0);
 
-    // 修复后的权限校验
-    if (!currentAccount || !(strcmp(currentAccount->role, "teacher") == 0 || 
-                            strcmp(currentAccount->role, "admin") == 0)) {
+    if (!isAdmin && !isTeacher) {
         printf("❌ 权限不足！\n");
         return;
     }
 
+    Student s;
     safeInput(s.username, MAX_STR_LEN, "学生用户名: ");
 
     // 检查学生是否已存在（保持不变）
@@ -784,9 +850,12 @@ void addStudent(Account* currentAccount) {
     }
 
     // 新增：管理员必须明确指定班级
-    if (strcmp(currentAccount->role, "admin") == 0) {
-        safeInputWithCheck(s.className, MAX_STR_LEN, "请输入班级(格式：2023_1): ", validateClassName);
-    } 
+    // 在班级输入部分添加额外提示
+    if (isAdmin) {
+        printf("\n🔧 管理员模式：请指定学生班级\n");
+        safeInputWithCheck(s.className, MAX_STR_LEN, 
+            "请输入班级(格式：2023_1): ", validateClassName);
+    }
     else {  // 教师自动关联班级
         strcpy(s.className, currentAccount->className);
         printf("🏫 自动设置班级: %s\n", s.className);
@@ -914,7 +983,6 @@ void teacherMenu(Account* acc) {
     } while (choice != 0);
 }
 
-
 void adminAccountManagement() {
     int choice;
     do {
@@ -922,7 +990,7 @@ void adminAccountManagement() {
         printf("1. 查看所有账号\n");
         printf("2. 删除账号\n");
         printf("3. 修改密码\n");
-        printf("4. 导出账号到文件\n");
+        printf("4. 导出账号到桌面\n");
         printf("5. 从文件导入账号\n");
         printf("0. 返回\n");
         choice = safeInputInt("请选择: ", 0, 5);
@@ -972,8 +1040,16 @@ void adminAccountManagement() {
                 break;
             }
             case 4: {
-                saveAccounts();
-                printf("账号数据已导出到accounts.txt\n");
+                const char* homeDir = getenv("HOME");
+                if (homeDir) {
+                    char path[256];
+                    snprintf(path, sizeof(path), "%s/Desktop/accounts.txt", homeDir);
+                    saveAccountsToFile(path);
+                    printf("账号数据已导出到桌面：%s\n", path);
+                } else {
+                    saveAccounts();
+                    printf("无法获取桌面路径，已导出到当前目录。\n");
+                }
                 break;
             }
             case 5: {
@@ -985,7 +1061,13 @@ void adminAccountManagement() {
     } while(choice != 0);
 }
 
-void adminStudentManagement() {
+void adminStudentManagement(Account* currentAccount) {
+
+    if(!currentAccount || strcmp(currentAccount->role, "admin") != 0){
+        printf("非法访问！\n");
+        return;
+    }
+
     int subChoice;
     do {
         printf("\n=== 学生管理 ===\n");
@@ -1009,7 +1091,7 @@ void adminStudentManagement() {
                 break;
             }
             case 2: 
-                addStudent(NULL); // 传递NULL表示管理员权限
+                addStudent(currentAccount); // 传递NULL表示管理员权限
                 break;
             case 3: {
                 char username[MAX_STR_LEN];
@@ -1116,7 +1198,7 @@ void adminMenu(Account* acc) {
         
         switch(choice) {
             case 1: 
-                adminStudentManagement();
+                adminStudentManagement(acc);
                 break;
             case 2: 
                 adminAccountManagement();
