@@ -1,0 +1,13 @@
+wuwu1|11111111q|student|2020_1|wuwu1@school.com
+wuwuwu|11111111q|teacher|2020_1|wuwuwu@school.com
+wdiw|123456|student|2020_1|auto@created.com
+wuwuwuwu|a123123123|admin|ADMIN_CLASS|wuwuwuwu@school.com
+wuwu3|11111111q|student|2021_1|wuwu3@school.com
+wuwuwu2|11111111q|teacher|2023_1|wuwuwu2@school.com
+addd12|a12345678|admin|ADMIN_CLASS|1233333@qq.com
+aaaaa123|a2345678|student|231|307362384@qq.co
+gghvj|FNGp4FHA|student|2020_1|gghvj@auto.school.c
+wuwuwuwuwu|11111111q|admin|ADMIN_CLASS|3319176244@qq.com
+niweibo|11111111q|student|2020_1|niweibo@school.com
+nishen|11111111q|teacher|2020_1|nishen@q.com
+nixuezhang|11111111q|admin|ADMIN_CLASS|nixuezhang@qq.com
